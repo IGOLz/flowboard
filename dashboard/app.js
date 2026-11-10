@@ -127,8 +127,8 @@ function fit() {
 }
 
 // ---------- Wheel: zoom, pan, or scroll inside a screen ----------
-// A wheel gesture sticks to where it started: begun on the canvas it pans (even across screens),
-// begun on a screen it scrolls that screen, and pans the canvas once the screen cannot scroll further.
+// A wheel gesture sticks to where it started: begun on the canvas it pans (even across screens);
+// begun on a screen it only ever scrolls that screen, and stops at its edges.
 let wheelTarget = null;
 let wheelTimer;
 
@@ -150,9 +150,9 @@ viewport.addEventListener('wheel', (event) => {
   clearTimeout(wheelTimer);
   wheelTimer = setTimeout(() => { wheelTarget = null; }, WHEEL_GESTURE_MS);
 
-  const iframe = wheelTarget !== 'canvas' && wheelTarget.isConnected && wheelTarget.querySelector('iframe');
-  if (!iframe?.contentWindow) return pan(dx, dy);
-  forwardScroll(iframe, wheelTarget, event.clientX, event.clientY, dx, dy);
+  if (wheelTarget === 'canvas') return pan(dx, dy);
+  const iframe = wheelTarget.querySelector('iframe');
+  if (wheelTarget.isConnected && iframe?.contentWindow) forwardScroll(iframe, wheelTarget, event.clientX, event.clientY, dx, dy);
 }, { passive: false });
 
 // Wheel deltas for a screen are summed and sent once per frame, so a busy screen gets one
@@ -169,32 +169,20 @@ function forwardScroll(iframe, frame, clientX, clientY, dx, dy) {
   scrollOut.dy += dy;
 }
 
-let scrolledWindow = null;
-
 function flushScroll() {
   if (!scrollOut) return;
   const { iframe, frame, clientX, clientY, dx, dy } = scrollOut;
   scrollOut = null;
-  if (!iframe.isConnected || !iframe.contentWindow) return pan(dx, dy);
+  if (!iframe.isConnected || !iframe.contentWindow) return;
   const rect = frame.getBoundingClientRect();
-  scrolledWindow = iframe.contentWindow;
-  scrolledWindow.postMessage({
+  iframe.contentWindow.postMessage({
     flowboard: 'scroll',
     x: (clientX - rect.left) / view.z,
     y: (clientY - rect.top) / view.z,
     dx: dx / view.z,
     dy: dy / view.z,
-    screenDx: dx,
-    screenDy: dy,
   }, frameOrigin);
 }
-
-// A screen that cannot scroll further hands the movement back to the canvas.
-addEventListener('message', (event) => {
-  if (event.origin !== frameOrigin || event.source !== scrolledWindow || event.data?.flowboard !== 'unscrolled') return;
-  const { dx, dy } = event.data;
-  if (Number.isFinite(dx) && Number.isFinite(dy)) pan(dx, dy);
-});
 
 // ---------- Drag: left, middle (wheel) and right button all pan the canvas ----------
 viewport.addEventListener('contextmenu', (event) => event.preventDefault());

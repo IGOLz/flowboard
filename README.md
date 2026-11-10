@@ -54,7 +54,7 @@ Inside one category, stories collapse into a single screen when:
 | 100% | | `0` |
 | Fit all screens | | `1` |
 
-A scroll gesture stays with where it started: begun on the canvas it pans, even across screens; begun on a screen it scrolls that screen, and pans the canvas once the screen reaches its end.
+A scroll gesture stays with where it started: begun on the canvas it pans, even across screens; begun on a screen it only scrolls that screen and stops at its top and bottom, without moving the canvas.
 
 ## How it works
 
