@@ -292,17 +292,18 @@ function el(tag, attrs = {}, ...children) {
 
 const storyUrl = (id) => `${frameOrigin}/storybook/iframe.html?id=${encodeURIComponent(id)}&viewMode=story`;
 
-// The id chip copies the id, e.g. to hand a screen to an agent ("update 2.2.home-name").
-function idChip(id) {
-  const chip = el('button', { className: 'id', title: 'Copy id', textContent: id });
-  chip.onclick = async () => {
+// A screen or category name ("2.2 Home name") is its id: clicking it copies the id
+// ("2.2.home-name"), e.g. to hand the screen to an agent.
+function nameButton(label, id, className) {
+  const button = el('button', { className: `copy-name ${className}`, title: `Copy id ${id}`, textContent: label });
+  button.onclick = async () => {
     try {
       await navigator.clipboard.writeText(id);
-      chip.textContent = 'Copied';
-      setTimeout(() => { chip.textContent = id; }, 1000);
+      button.textContent = `Copied ${id}`;
+      setTimeout(() => { button.textContent = label; }, 1200);
     } catch {}
   };
-  return chip;
+  return button;
 }
 
 // Every state of a screen gets its own iframe, stacked in the same frame; only the active one is
@@ -324,8 +325,7 @@ function renderScreen(screen) {
   iframeFor(index).classList.add('active');
   lazy.observe(frame);
 
-  const titleRow = el('div', { className: 'title-row' }, el('span', { className: 'name', textContent: screen.name }));
-  const caption = el('figcaption', {}, idChip(screen.id), titleRow);
+  const caption = el('figcaption', {}, nameButton(screen.label, screen.id, 'name'));
   if (screen.states.length > 1) {
     const label = el('span', { className: 'state' });
     const updateLabel = () => { label.textContent = `${screen.states[index].label} · ${index + 1}/${screen.states.length}`; };
@@ -348,7 +348,7 @@ function renderScreen(screen) {
       target.addEventListener('ready', activate, { once: true });
       if (!target.src) target.src = target.dataset.src; // asked for now: skip the queue
     };
-    titleRow.append(el('span', { className: 'states' },
+    caption.append(el('span', { className: 'states' },
       el('button', { className: 'prev', title: 'Previous state', textContent: '‹', onclick: () => show(index - 1) }),
       label,
       el('button', { className: 'next', title: 'Next state', textContent: '›', onclick: () => show(index + 1) }),
@@ -363,7 +363,7 @@ function render(stories) {
   loadQueue.length = 0;
   loading.clear();
   world.replaceChildren(...groupScreens(stories).map((category) => el('section', { className: 'category' },
-    el('h2', {}, idChip(category.id), category.title.split('/').join(' / '),
+    el('h2', {}, nameButton(category.label, category.id, 'title'),
       el('small', {}, `${category.screens.length} ${category.screens.length === 1 ? 'screen' : 'screens'}`)),
     el('div', { className: 'row' }, ...category.screens.map(renderScreen)),
   )));

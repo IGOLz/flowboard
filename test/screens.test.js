@@ -61,7 +61,7 @@ test('a number followed by a word with a dash is not a screen number', () => {
   ]), { Weather: ['3-day forecast: Default', '3 · Settings: Default', '1-Tap Login: Default'] });
 });
 
-test('categories and screens get positional ids', () => {
+test('categories and screens are named by position, and the name maps to the id', () => {
   const ids = groupScreens([
     story('Accesso', 'Welcome'),
     story('Accesso', 'Email'),
@@ -69,10 +69,10 @@ test('categories and screens get positional ids', () => {
     story('Onboarding mobile', '02 · Home name'),
     story('Onboarding mobile', '02 · Home name empty'),
     story('Attività', 'Archived'),
-  ]).map((c) => [c.id, c.screens.map((s) => s.id)]);
+  ]).map((c) => [c.label, c.id, c.screens.map((s) => [s.label, s.id])]);
   assert.deepEqual(ids, [
-    ['1.accesso', ['1.1.welcome', '1.2.email']],
-    ['2.onboarding-mobile', ['2.1.welcome', '2.2.home-name']],
-    ['3.attivita', ['3.1.archived']],
+    ['1 Accesso', '1.accesso', [['1.1 Welcome', '1.1.welcome'], ['1.2 Email', '1.2.email']]],
+    ['2 Onboarding mobile', '2.onboarding-mobile', [['2.1 Welcome', '2.1.welcome'], ['2.2 Home name', '2.2.home-name']]],
+    ['3 Attività', '3.attivita', [['3.1 Archived', '3.1.archived']]],
   ]);
 });

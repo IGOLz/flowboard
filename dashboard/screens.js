@@ -37,9 +37,10 @@ function slug(text) {
 }
 
 /**
- * Categories in story order. Every category and screen gets a readable id from its position:
- * category "1.accesso", its screens "1.1.welcome", "1.2.email"… (a leading "02 ·" is dropped).
- * @returns {{id: string, title: string, screens: {id: string, key: string, name: string, states: {id: string, label: string}[]}[]}[]}
+ * Categories in story order. Each category and screen is named by its position, and that name
+ * doubles as its id: category "1 Accesso" (id "1.accesso"), screens "1.1 Welcome"
+ * (id "1.1.welcome"), "2.2 Home name" (id "2.2.home-name"; a leading "02 ·" is dropped).
+ * @returns {{id: string, label: string, title: string, screens: {id: string, label: string, key: string, name: string, states: {id: string, label: string}[]}[]}[]}
  */
 export function groupScreens(stories) {
   const byTitle = new Map();
@@ -56,7 +57,7 @@ export function groupScreens(stories) {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(story);
     }
-    const categoryId = `${c + 1}.${slug(title.split('/').join(' '))}`;
+    const categoryTitle = title.split('/').join(' / ');
     const screens = [...groups].map(([key, stories], s) => {
       // The base is the named screen, or for numbered groups the shortest name ("02 · Home name"
       // rather than "02 · Home name empty"), whatever order the stories come in.
@@ -65,8 +66,15 @@ export function groupScreens(stories) {
         : key;
       const states = stories.map((story) => ({ id: story.id, label: story.name === name ? 'Default' : stateLabel(story.name, name) }));
       states.sort((a, b) => (b.label === 'Default') - (a.label === 'Default')); // default first
-      return { id: `${c + 1}.${s + 1}.${slug(name.replace(NUMBERED, ''))}`, key: `${title}\u0000${key}`, name, states };
+      const plain = name.replace(NUMBERED, '').trim();
+      return {
+        id: `${c + 1}.${s + 1}.${slug(plain)}`,
+        label: `${c + 1}.${s + 1} ${plain}`,
+        key: `${title}\u0000${key}`,
+        name,
+        states,
+      };
     });
-    return { id: categoryId, title, screens };
+    return { id: `${c + 1}.${slug(categoryTitle)}`, label: `${c + 1} ${categoryTitle}`, title, screens };
   });
 }

@@ -10,7 +10,7 @@ Flowboard compiles your stories with `storybook build`, serves the static bundle
 
 - one row per category (the story `title`, e.g. `Onboarding mobile`), with all its screens side by side;
 - stories that are states of the same screen collapse into one screen with ‹ › arrows to switch state;
-- every category and screen has an id from its position, e.g. `1.accesso` and `1.1.welcome` (click it to copy);
+- categories and screens are named by position, e.g. `1 Accesso` and `1.1 Welcome`; clicking a name copies its id (`1.accesso`, `1.1.welcome`);
 - every screen rendered at the size of the selected device (the Chrome DevTools device list);
 - read-only: screens are real renders of your code; you can scroll inside them, but they never receive clicks or keyboard input;
 - no Storybook dev server: when a source file changes, Flowboard rebuilds and the canvas refreshes by itself.
@@ -45,7 +45,7 @@ Inside one category, stories collapse into a single screen when:
 
 `Create` and `Create Rooms` stay two screens: `Rooms` is not a state word.
 
-Ids follow the story order: they change when stories are added or reordered. Storybook's own story id (e.g. `accesso--welcome`) stays stable.
+Names and ids follow the story order: they change when stories are added or reordered. Storybook's own story id (e.g. `accesso--welcome`) stays stable.
 
 ## Canvas controls
 
