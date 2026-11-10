@@ -51,10 +51,10 @@ export async function initProject(root, { version, configDir = '.storybook', por
   if (pkg.scripts?.flowboard && pkg.scripts.flowboard !== script) {
     throw new Error('A different scripts.flowboard already exists. Rename it before running init.');
   }
-  if (!pkg.devDependencies?.flowboard && !pkg.dependencies?.flowboard) {
+  if (!pkg.devDependencies?.['@igol/flowboard'] && !pkg.dependencies?.['@igol/flowboard']) {
     const args = manager === 'npm' ? ['install', '--save-dev'] : ['add', '--dev'];
     if (manager === 'pnpm' && existsSync(join(root, 'pnpm-workspace.yaml'))) args.push('--workspace-root');
-    await install(manager, [...args, `flowboard@^${version}`], root);
+    await install(manager, [...args, `@igol/flowboard@^${version}`], root);
   }
   // Re-read after installation to preserve dependency changes made by the package manager.
   const updated = await readFile(path, 'utf8');

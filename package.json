@@ -1,5 +1,5 @@
 {
-  "name": "flowboard",
+  "name": "@igol/flowboard",
   "version": "0.1.0",
   "description": "See every Storybook screen of your app on one infinite, read-only canvas.",
   "type": "module",

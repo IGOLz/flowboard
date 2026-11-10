@@ -20,10 +20,10 @@ Designed for Storybook 7+ projects, including React Native through `@storybook/r
 
 ## Usage
 
-After publication on npm, run this from the folder containing your `package.json` and `.storybook` config:
+Run this from the folder containing your `package.json` and `.storybook` config:
 
 ```sh
-npx flowboard@latest init --open
+npx @igol/flowboard@latest init --open
 ```
 
 `init` detects npm, pnpm, Yarn or Bun from `packageManager` or a lockfile, including at a parent workspace root. It installs Flowboard as a development dependency and adds `"flowboard": "flowboard --open"` to your scripts. It preserves existing scripts and refuses to overwrite a different `flowboard` script. Re-running it is safe. Custom `--config-dir`, `--port` and `--no-watch` options are saved in the script; config paths are relative to the project. With `--open` it also starts the dashboard. Without `--open` it only sets up the project.
@@ -37,14 +37,14 @@ npm run flowboard    # or pnpm/yarn/bun run flowboard
 For a manual installation:
 
 ```sh
-npm install -D flowboard
+npm install -D @igol/flowboard
 npx flowboard --open
 ```
 
 For a one-off run without adding a project dependency:
 
 ```sh
-npx flowboard@latest --open    # dashboard on http://localhost:6007
+npx @igol/flowboard@latest --open    # dashboard on http://localhost:6007
 ```
 
 | Option | Default | |
@@ -56,10 +56,10 @@ npx flowboard@latest --open    # dashboard on http://localhost:6007
 
 Builds are cached in `node_modules/.cache/flowboard`, so the last build shows up at once while a fresh one runs.
 
-The `init` and registry installation commands require an npm release. Before publication, create a package with `npm pack` in the Flowboard checkout, then run these commands in your target project:
+To test a local checkout before publishing a new release, create a package with `npm pack` in the Flowboard checkout, then run these commands in your target project:
 
 ```sh
-npm install -D /absolute/path/to/flowboard-0.1.0.tgz
+npm install -D /absolute/path/to/igol-flowboard-0.1.0.tgz
 npx flowboard init --open
 ```
 
@@ -70,8 +70,8 @@ The tarball is a real installation, independent of the source checkout. To test 
 Flowboard stays in `node_modules`; its dashboard source is never copied into your project. Commit your `package.json` and lockfile to share the same version with your team. Updates are explicit:
 
 ```sh
-npm update flowboard                  # within the declared version range
-npm install -D flowboard@latest       # latest release, including breaking changes
+npm update @igol/flowboard                  # within the declared version range
+npm install -D @igol/flowboard@latest       # latest release, including breaking changes
 npx flowboard --version
 ```
 
@@ -81,14 +81,14 @@ Releases use semantic versioning. During `0.x`, minor releases can include break
 
 ## Releasing
 
-Run from a clean `main` checkout with an authenticated npm account authorized to publish `flowboard`. The package currently uses `UNLICENSED`, so distribution does not grant an open-source license.
+Run from a clean `main` checkout with an authenticated npm account authorized to publish `@igol/flowboard`. The package currently uses `UNLICENSED`, so distribution does not grant an open-source license.
 
 1. Run `npm test` and `npm pack --dry-run`. Test the generated tarball in a separate Storybook project before publishing.
 2. For subsequent releases, run `npm version patch`, `npm version minor` or `npm version major` and add release notes on GitHub. The initial version is `0.1.0`.
 3. Run `npm publish --access public`. The `prepublishOnly` script runs the tests again. npm may require account authentication or 2FA.
 4. After a successful publication, push the release commit and tags with `git push origin main --follow-tags`. Users can then install or update to the new version.
 
-The first publication reserves the package name, subject to npm availability and policy. Never include credentials or local build artifacts in a release.
+The npm package is `@igol/flowboard`; the executable command remains `flowboard`. Never include credentials or local build artifacts in a release.
 
 ## Screen states
 

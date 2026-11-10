@@ -18,10 +18,10 @@ test('init installs with the selected manager, preserves changes and is idempote
   const install = async (command, args, cwd) => {
     calls++;
     assert.equal(command, 'pnpm');
-    assert.deepEqual(args, ['add', '--dev', 'flowboard@^0.1.0']);
+    assert.deepEqual(args, ['add', '--dev', '@igol/flowboard@^0.1.0']);
     assert.equal(cwd, root);
     const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-    pkg.devDependencies = { flowboard: '^0.1.0' };
+    pkg.devDependencies = { '@igol/flowboard': '^0.1.0' };
     await writeFile(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
   };
   await initProject(root, { version: '0.1.0', configDir: 'config/story book', install });
@@ -71,13 +71,13 @@ test('init explicitly targets a pnpm workspace root', async (t) => {
   await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages: []');
   await initProject(root, { version: '0.1.0', install: async (command, args) => {
     assert.equal(command, 'pnpm');
-    assert.deepEqual(args, ['add', '--dev', '--workspace-root', 'flowboard@^0.1.0']);
+    assert.deepEqual(args, ['add', '--dev', '--workspace-root', '@igol/flowboard@^0.1.0']);
   } });
 });
 
 test('init preserves BOM and CRLF, makes config portable and saves launch options', async (t) => {
   const root = await project(t);
-  await writeFile(join(root, 'package.json'), '\uFEFF{\r\n\t"devDependencies": {"flowboard": "^0.1.0"}\r\n}\r\n');
+  await writeFile(join(root, 'package.json'), '\uFEFF{\r\n\t"devDependencies": {"@igol/flowboard": "^0.1.0"}\r\n}\r\n');
   await initProject(root, { version: '0.1.0', configDir: join(root, 'custom config'), port: '7000', noWatch: true });
   const content = await readFile(join(root, 'package.json'), 'utf8');
   assert.ok(content.startsWith('\uFEFF'));
