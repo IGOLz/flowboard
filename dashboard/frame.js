@@ -14,30 +14,17 @@
     post({ type: 'zoom', x: event.clientX, y: event.clientY, deltaY: event.deltaY, deltaMode: event.deltaMode });
   }, { capture: true, passive: false });
 
-  let drag = null;
+  // Middle/right drag pans the canvas: hand the drag over to it. Pointer positions inside this
+  // frame shift as the canvas moves it (and scale with the zoom), so the canvas tracks the drag
+  // itself, with screens letting the pointer through until the button is released.
   addEventListener('pointerdown', (event) => {
     if (event.button !== 1 && event.button !== 2) return;
     event.preventDefault();
     event.stopPropagation(); // the app never sees canvas drags
-    drag = { id: event.pointerId, x: event.screenX, y: event.screenY };
-    document.documentElement.setPointerCapture(event.pointerId);
+    post({ type: 'grab' });
   }, true);
-  const move = (event) => {
-    if (!drag || event.pointerId !== drag.id) return false;
-    event.stopPropagation();
-    const dx = event.screenX - drag.x;
-    const dy = event.screenY - drag.y;
-    if (dx || dy) post({ type: 'pan', dx, dy });
-    drag.x = event.screenX;
-    drag.y = event.screenY;
-    return true;
-  };
-  addEventListener('pointermove', move, true);
-  const endDrag = (event) => { if (move(event)) drag = null; };
-  addEventListener('pointerup', endDrag, true);
-  addEventListener('pointercancel', endDrag, true);
+  addEventListener('mousedown', (event) => { if (event.button) event.preventDefault(); }, true); // no autoscroll or selection
   addEventListener('contextmenu', (event) => event.preventDefault(), true);
-  addEventListener('mousedown', (event) => { if (event.button === 1) event.preventDefault(); }, true); // no autoscroll
 
   // A story that focuses an input by itself (autofocus) must not steal the canvas shortcuts:
   // only focus that follows a click or key press in this screen stays here.

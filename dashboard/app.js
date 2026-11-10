@@ -162,6 +162,16 @@ viewport.addEventListener('pointermove', (event) => {
   lastPointer = { x: event.clientX, y: event.clientY };
 });
 const endDrag = () => viewport.classList.remove('dragging');
+// A middle/right drag begun over a screen: frame.js hands it over ('grab') and, with screens
+// letting the pointer through while dragging, the rest of the drag reaches this window.
+let grabbed = false;
+addEventListener('pointermove', (event) => {
+  if (!grabbed) return;
+  if (!(event.buttons & 6)) { grabbed = false; return endDrag(); }
+  if (lastPointer) pan(lastPointer.x - event.clientX, lastPointer.y - event.clientY);
+  lastPointer = { x: event.clientX, y: event.clientY };
+});
+addEventListener('pointerup', () => { if (grabbed) { grabbed = false; endDrag(); } });
 viewport.addEventListener('pointerup', endDrag);
 viewport.addEventListener('pointercancel', endDrag);
 
@@ -221,7 +231,7 @@ function pumpLoads() {
 // Messages from frame.js, inside a screen:
 // - ready: its story has rendered; mark that iframe and notify listeners;
 // - reset: it cleared the app's storage, so the screen can reload;
-// - zoom / pan: a canvas gesture made over the screen;
+// - zoom / grab: ⌘/Ctrl+wheel or a middle/right drag begun over the screen;
 // - unfocus: the story focused itself (autofocus); give the keyboard back to the canvas.
 addEventListener('message', (event) => {
   const message = event.data;
@@ -237,8 +247,11 @@ addEventListener('message', (event) => {
     const rect = iframe.getBoundingClientRect();
     const scale = rect.width / iframe.offsetWidth; // the canvas zoom
     wheelZoom(Number(message.deltaY) || 0, message.deltaMode, rect.left + message.x * scale, rect.top + message.y * scale);
-  } else if (message.flowboard === 'pan') {
-    pan(-(Number(message.dx) || 0), -(Number(message.dy) || 0));
+  } else if (message.flowboard === 'grab') {
+    grabbed = true;
+    lastPointer = null;
+    viewport.classList.add('dragging');
+    viewport.focus({ preventScroll: true });
   } else if (message.flowboard === 'unfocus') {
     iframe.blur();
     viewport.focus({ preventScroll: true });

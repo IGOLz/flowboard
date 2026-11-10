@@ -64,7 +64,7 @@ Scrolling a screen stops at its top and bottom, without moving the canvas. A scr
 ## How it works
 
 - Screens are iframes of the static Storybook bundle, served from the other loopback name (`127.0.0.1` when the dashboard is on `localhost`). Being another site, they run in a separate browser process, so their JavaScript never stalls panning and zooming.
-- [dashboard/frame.js](dashboard/frame.js) is injected into every screen. It reports when a story has rendered, so screens boot four at a time; forwards zoom and right/middle drags made over the screen to the canvas; and clears the screen's storage on reset.
+- [dashboard/frame.js](dashboard/frame.js) is injected into every screen. It reports when a story has rendered, so screens boot four at a time; hands ⌘/Ctrl+wheel zooms and middle/right drags begun over the screen to the canvas; and clears the screen's storage on reset.
 - Each state of a screen is its own iframe, stacked in the same frame. A state is shown only once it has rendered, so switching never flashes blank, and switching back is instant. Reset loads a fresh iframe underneath the same way.
 - The server only answers `localhost` / `127.0.0.1` requests from this machine.
 
