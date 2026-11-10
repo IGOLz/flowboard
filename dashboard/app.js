@@ -30,7 +30,6 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const GRID = 24;
 const POLL_MS = 2000;
-const WHEEL_GESTURE_MS = 200;
 
 const $ = (id) => document.getElementById(id);
 const viewport = $('viewport');
@@ -126,71 +125,33 @@ function fit() {
   applyView();
 }
 
-// ---------- Wheel: zoom, pan, or scroll inside a screen ----------
-// A wheel gesture sticks to where it started: begun on the canvas it pans (even across screens);
-// begun on a screen it only ever scrolls that screen, and stops at its edges.
-let wheelTarget = null;
-let wheelTimer;
+// ---------- Wheel: zoom or pan ----------
+// Over a screen the wheel scrolls that screen (natively, inside its iframe) and stops at its
+// edges; ⌘/Ctrl+wheel over a screen comes here through frame.js.
+function wheelZoom(deltaY, deltaMode, cx, cy) {
+  // Mouse wheel notches (line mode or ~100px deltas) step the zoom by exactly 10 points;
+  // trackpad pinch sends small pixel deltas and zooms smoothly.
+  const notch = deltaMode !== 0 || Math.abs(deltaY) >= 50;
+  if (notch && deltaY) zoomStep(-Math.sign(deltaY), cx, cy);
+  else zoomAt(Math.exp(-deltaY * 0.01), cx, cy);
+}
 
 viewport.addEventListener('wheel', (event) => {
   event.preventDefault();
+  if (event.ctrlKey || event.metaKey) return wheelZoom(event.deltaY, event.deltaMode, event.clientX, event.clientY);
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-  if (event.ctrlKey || event.metaKey) {
-    // Mouse wheel notches (line mode or ~100px deltas) step the zoom by exactly 10 points;
-    // trackpad pinch sends small pixel deltas and zooms smoothly.
-    const notch = event.deltaMode !== 0 || Math.abs(event.deltaY) >= 50;
-    if (notch && event.deltaY) zoomStep(-Math.sign(event.deltaY), event.clientX, event.clientY);
-    else zoomAt(Math.exp(-event.deltaY * 0.01), event.clientX, event.clientY);
-    return;
-  }
-
-  const dx = event.deltaX * unit;
-  const dy = event.deltaY * unit;
-  if (!wheelTarget) wheelTarget = event.target.closest?.('.frame.loaded') ?? 'canvas';
-  clearTimeout(wheelTimer);
-  wheelTimer = setTimeout(() => { wheelTarget = null; }, WHEEL_GESTURE_MS);
-
-  if (wheelTarget === 'canvas') return pan(dx, dy);
-  const iframe = wheelTarget.querySelector('iframe.active');
-  if (wheelTarget.isConnected && iframe?.contentWindow) forwardScroll(iframe, wheelTarget, event.clientX, event.clientY, dx, dy);
+  pan(event.deltaX * unit, event.deltaY * unit);
 }, { passive: false });
 
-// Wheel deltas for a screen are summed and sent once per frame, so a busy screen gets one
-// message per frame instead of one per wheel event.
-let scrollOut = null;
-
-function forwardScroll(iframe, frame, clientX, clientY, dx, dy) {
-  if (scrollOut && scrollOut.iframe !== iframe) flushScroll();
-  if (!scrollOut) {
-    scrollOut = { iframe, frame, clientX, clientY, dx: 0, dy: 0 };
-    requestAnimationFrame(flushScroll);
-  }
-  scrollOut.dx += dx;
-  scrollOut.dy += dy;
-}
-
-function flushScroll() {
-  if (!scrollOut) return;
-  const { iframe, frame, clientX, clientY, dx, dy } = scrollOut;
-  scrollOut = null;
-  if (!iframe.isConnected || !iframe.contentWindow) return;
-  const rect = frame.getBoundingClientRect();
-  iframe.contentWindow.postMessage({
-    flowboard: 'scroll',
-    x: (clientX - rect.left) / view.z,
-    y: (clientY - rect.top) / view.z,
-    dx: dx / view.z,
-    dy: dy / view.z,
-  }, frameOrigin);
-}
-
-// ---------- Drag: left, middle (wheel) and right button all pan the canvas ----------
+// ---------- Drag: pan the canvas ----------
+// Left drag pans from the empty canvas (on a screen it is a tap or swipe in the app); middle and
+// right drag pan from anywhere (over a screen, frame.js forwards them).
 viewport.addEventListener('contextmenu', (event) => event.preventDefault());
 let lastPointer = null;
 viewport.addEventListener('pointerdown', (event) => {
   if (event.button > 2 || event.target.closest('button')) return;
   event.preventDefault(); // no text selection or middle-click autoscroll while panning
-  viewport.focus({ preventScroll: true }); // e.g. leave the device menu, so shortcuts work again
+  viewport.focus({ preventScroll: true }); // e.g. leave the device menu or a screen, so shortcuts work again
   viewport.setPointerCapture(event.pointerId);
   viewport.classList.add('dragging');
   lastPointer = { x: event.clientX, y: event.clientY };
@@ -203,14 +164,6 @@ viewport.addEventListener('pointermove', (event) => {
 const endDrag = () => viewport.classList.remove('dragging');
 viewport.addEventListener('pointerup', endDrag);
 viewport.addEventListener('pointercancel', endDrag);
-
-// Screens are read-only: when one grabs keyboard focus (e.g. an autofocused input),
-// take it back so canvas shortcuts keep working.
-addEventListener('blur', () => setTimeout(() => {
-  if (!(document.activeElement instanceof HTMLIFrameElement)) return;
-  document.activeElement.blur();
-  viewport.focus({ preventScroll: true });
-}));
 
 addEventListener('keydown', (event) => {
   // Leave browser shortcuts (⌘−, ⌘0, ⌘1…) and the device menu alone.
@@ -265,13 +218,30 @@ function pumpLoads() {
   }
 }
 
-// frame.js says 'ready' each time its story has rendered: mark that iframe and notify listeners.
+// Messages from frame.js, inside a screen:
+// - ready: its story has rendered; mark that iframe and notify listeners;
+// - reset: it cleared the app's storage, so the screen can reload;
+// - zoom / pan: a canvas gesture made over the screen;
+// - unfocus: the story focused itself (autofocus); give the keyboard back to the canvas.
 addEventListener('message', (event) => {
-  if (event.origin !== frameOrigin || event.data?.flowboard !== 'ready') return;
-  for (const iframe of world.querySelectorAll('.frame iframe')) {
-    if (iframe.contentWindow !== event.source) continue;
+  const message = event.data;
+  if (event.origin !== frameOrigin || typeof message?.flowboard !== 'string') return;
+  const iframe = [...world.querySelectorAll('.frame iframe')].find((f) => f.contentWindow === event.source);
+  if (!iframe) return;
+  if (message.flowboard === 'ready') {
     iframe.dataset.ready = 'true';
     iframe.dispatchEvent(new Event('ready'));
+  } else if (message.flowboard === 'reset') {
+    iframe.dispatchEvent(new Event('reset'));
+  } else if (message.flowboard === 'zoom') {
+    const rect = iframe.getBoundingClientRect();
+    const scale = rect.width / iframe.offsetWidth; // the canvas zoom
+    wheelZoom(Number(message.deltaY) || 0, message.deltaMode, rect.left + message.x * scale, rect.top + message.y * scale);
+  } else if (message.flowboard === 'pan') {
+    pan(-(Number(message.dx) || 0), -(Number(message.dy) || 0));
+  } else if (message.flowboard === 'unfocus') {
+    iframe.blur();
+    viewport.focus({ preventScroll: true });
   }
 });
 
@@ -313,41 +283,66 @@ function renderScreen(screen) {
   let index = Math.min(selectedState.get(screen.key) ?? 0, screen.states.length - 1);
   const frame = el('div', { className: 'frame' });
   const iframes = new Map(); // state index → iframe
-  const iframeFor = (i) => {
-    if (iframes.has(i)) return iframes.get(i);
+  const createIframe = (i) => {
     const iframe = el('iframe', { title: `${screen.name} – ${screen.states[i].label}`, tabIndex: -1 });
     iframe.dataset.src = storyUrl(screen.states[i].id);
     iframe.onload = () => iframe.src && frame.classList.add('loaded'); // not the initial about:blank
-    iframes.set(i, iframe);
     frame.append(iframe);
     return iframe;
+  };
+  const iframeFor = (i) => {
+    if (!iframes.has(i)) iframes.set(i, createIframe(i));
+    return iframes.get(i);
+  };
+  // Shows the current state's iframe once it has rendered, unless the user moved on meanwhile.
+  const activate = (target) => {
+    if (iframes.get(index) !== target) return;
+    for (const iframe of frame.querySelectorAll('iframe')) iframe.classList.toggle('active', iframe === target);
   };
   iframeFor(index).classList.add('active');
   lazy.observe(frame);
 
   const caption = el('figcaption', {}, nameButton(screen.label, screen.id, 'name'));
-  if (screen.states.length > 1) {
-    const label = el('span', { className: 'state' });
-    const updateLabel = () => { label.textContent = `${screen.states[index].label} · ${index + 1}/${screen.states.length}`; };
-    const show = (next) => {
-      index = (next + screen.states.length) % screen.states.length;
-      selectedState.set(screen.key, index);
-      updateLabel();
-      const target = iframeFor(index);
-      const activate = () => {
-        if (iframes.get(index) !== target) return; // the user already moved to another state
-        for (const iframe of iframes.values()) iframe.classList.toggle('active', iframe === target);
-      };
-      const current = frame.querySelector('iframe.active');
-      if (!current?.src) { // nothing on screen yet: show the new state and let it take the queue slot
-        activate();
-        loadQueue.push(target);
-        return pumpLoads();
-      }
-      if (target.dataset.ready) return activate();
-      target.addEventListener('ready', activate, { once: true });
-      if (!target.src) target.src = target.dataset.src; // asked for now: skip the queue
+  const updateLabel = () => { label.textContent = `${screen.states[index].label} · ${index + 1}/${screen.states.length}`; };
+  const label = el('span', { className: 'state' });
+  const show = (next) => {
+    index = (next + screen.states.length) % screen.states.length;
+    selectedState.set(screen.key, index);
+    updateLabel();
+    const target = iframeFor(index);
+    const current = frame.querySelector('iframe.active');
+    if (!current?.src) { // nothing on screen yet: show the new state and let it take the queue slot
+      activate(target);
+      loadQueue.push(target);
+      return pumpLoads();
+    }
+    if (target.dataset.ready) return activate(target);
+    target.addEventListener('ready', () => activate(target), { once: true });
+    if (!target.src) target.src = target.dataset.src; // asked for now: skip the queue
+  };
+
+  // Reset: back to how the screen first loaded. The app's storage is cleared, every state that was
+  // played with is dropped, and the current one reloads underneath and swaps in once rendered.
+  let resetting = false;
+  const reset = () => {
+    const current = frame.querySelector('iframe.active');
+    if (resetting || !current?.dataset.ready) return;
+    resetting = true;
+    const reload = () => {
+      clearTimeout(timer);
+      current.removeEventListener('reset', reload);
+      for (const [i, iframe] of iframes) if (iframe !== current) { iframe.remove(); iframes.delete(i); }
+      const fresh = createIframe(index);
+      iframes.set(index, fresh);
+      fresh.addEventListener('ready', () => { activate(fresh); current.remove(); resetting = false; }, { once: true });
+      fresh.src = fresh.dataset.src;
     };
+    const timer = setTimeout(reload, 500); // in case the screen does not answer
+    current.addEventListener('reset', reload, { once: true });
+    current.contentWindow.postMessage({ flowboard: 'reset' }, frameOrigin);
+  };
+
+  if (screen.states.length > 1) {
     caption.append(el('span', { className: 'states' },
       el('button', { className: 'prev', title: 'Previous state', textContent: '‹', onclick: () => show(index - 1) }),
       label,
@@ -355,6 +350,7 @@ function renderScreen(screen) {
     ));
     updateLabel();
   }
+  caption.append(el('button', { className: 'reset', title: 'Reset screen', textContent: '↺', onclick: reset }));
   return el('figure', { className: 'screen' }, caption, frame);
 }
 

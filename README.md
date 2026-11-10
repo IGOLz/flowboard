@@ -12,7 +12,8 @@ Flowboard compiles your stories with `storybook build`, serves the static bundle
 - stories that are states of the same screen collapse into one screen with ‹ › arrows to switch state;
 - categories and screens are named by position, e.g. `1 Accesso` and `1.1 Welcome`; clicking a name copies its id (`1.accesso`, `1.1.welcome`);
 - every screen rendered at the size of the selected device (the Chrome DevTools device list);
-- read-only: screens are real renders of your code; you can scroll inside them, but they never receive clicks or keyboard input;
+- screens are real renders of your code: tap, type and scroll in them as in Storybook, then ↺ resets the screen to how it first loaded (its storage too);
+- nothing in the board itself can be edited;
 - no Storybook dev server: when a source file changes, Flowboard rebuilds and the canvas refreshes by itself.
 
 Works with any Storybook 7+ project, including React Native through `@storybook/react-native-web-vite`.
@@ -51,19 +52,20 @@ Names and ids follow the story order: they change when stories are added or reor
 
 | Action | Trackpad | Mouse / keyboard |
 |---|---|---|
-| Pan | two-finger scroll, or drag | drag with left, middle or right button, or wheel |
-| Scroll inside a screen | two-finger scroll over it | wheel over it |
+| Pan | two-finger scroll, or drag on the empty canvas | drag the empty canvas, or drag with the middle or right button anywhere, or wheel |
+| Use a screen | click, type, two-finger scroll over it | click, type, wheel over it |
+| Reset a screen | | ↺ next to its name |
 | Zoom | pinch | ⌘/Ctrl + wheel, `+` / `-` (10% steps) |
 | 100% | | `0` |
 | Fit all screens | | `1` |
 
-A scroll gesture stays with where it started: begun on the canvas it pans, even across screens; begun on a screen it only scrolls that screen and stops at its top and bottom, without moving the canvas.
+Scrolling a screen stops at its top and bottom, without moving the canvas. A screen that focuses an input by itself does not take the keyboard; one you clicked into keeps it until you click the canvas.
 
 ## How it works
 
 - Screens are iframes of the static Storybook bundle, served from the other loopback name (`127.0.0.1` when the dashboard is on `localhost`). Being another site, they run in a separate browser process, so their JavaScript never stalls panning and zooming.
-- [dashboard/frame.js](dashboard/frame.js) is injected into every screen. It scrolls on request and reports when a story has rendered, so screens boot four at a time.
-- Each state of a screen is its own iframe, stacked in the same frame. A state is shown only once it has rendered, so switching never flashes blank, and switching back is instant.
+- [dashboard/frame.js](dashboard/frame.js) is injected into every screen. It reports when a story has rendered, so screens boot four at a time; forwards zoom and right/middle drags made over the screen to the canvas; and clears the screen's storage on reset.
+- Each state of a screen is its own iframe, stacked in the same frame. A state is shown only once it has rendered, so switching never flashes blank, and switching back is instant. Reset loads a fresh iframe underneath the same way.
 - The server only answers `localhost` / `127.0.0.1` requests from this machine.
 
 ## Requirements
