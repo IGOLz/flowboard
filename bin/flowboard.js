@@ -9,28 +9,43 @@ import { exec, spawn } from 'node:child_process';
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { initProject } from './init.js';
 
-const { values: opts } = parseArgs({
+const { values: opts, positionals } = parseArgs({
+  allowPositionals: true,
   options: {
     port: { type: 'string', short: 'p', default: process.env.FLOWBOARD_PORT ?? '6007' },
     'config-dir': { type: 'string', short: 'c', default: '.storybook' },
     'no-watch': { type: 'boolean', default: false },
     open: { type: 'boolean', short: 'o', default: false },
     help: { type: 'boolean', short: 'h', default: false },
+    version: { type: 'boolean', short: 'v', default: false },
   },
 });
 
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+if (opts.version) {
+  console.log(version);
+  process.exit(0);
+}
+
 if (opts.help) {
-  console.log(`Usage: flowboard [--port <port>] [--config-dir <dir>] [--no-watch] [--open]
+  console.log(`Usage: flowboard [init] [--port <port>] [--config-dir <dir>] [--no-watch] [--open]
 
 Run it from the folder that contains your Storybook config (.storybook).
+Use init to install Flowboard and add an npm script. With --open, also start it.
 
   -p, --port        Dashboard port (default 6007)
   -c, --config-dir  Storybook config folder (default .storybook)
       --no-watch    Build once, do not rebuild on file changes
-  -o, --open        Open the dashboard in the browser`);
+  -o, --open        Open the dashboard in the browser
+  -v, --version     Print the installed version`);
   process.exit(0);
 }
+
+if (positionals.length > 1 || (positionals.length && positionals[0] !== 'init')) fail('Unknown command. Use flowboard --help.');
+if (!/^\d+$/.test(opts.port) || Number(opts.port) < 1 || Number(opts.port) > 65535) fail('Port must be an integer between 1 and 65535.');
+opts.port = String(Number(opts.port));
 
 const root = process.cwd();
 const configDir = resolve(root, opts['config-dir']);
@@ -57,6 +72,15 @@ function findStorybookBin() {
 
 if (!existsSync(configDir)) fail(`No Storybook config at ${configDir}.\nRun flowboard from the folder that contains .storybook, or pass --config-dir.`);
 const storybookBin = findStorybookBin() ?? fail('Storybook is not installed in this project (node_modules/.bin/storybook not found).');
+
+if (positionals[0] === 'init') {
+  try {
+    await initProject(root, { version, configDir: opts['config-dir'], port: opts.port, noWatch: opts['no-watch'] });
+  } catch (error) {
+    fail(error.message);
+  }
+  if (!opts.open) process.exit(0);
+}
 
 // ---------- Build ----------
 const state = { build: null, building: false, error: null, stories: [] };
