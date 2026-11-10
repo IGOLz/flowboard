@@ -3,7 +3,7 @@
   --dot: #c9c9ce;
   --text: #18181b;
   --muted: #71717a;
-  --panel: rgba(255, 255, 255, 0.85);
+  --panel: #ffffff;
   --border: rgba(0, 0, 0, 0.08);
   --frame-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.1);
   --accent: #6d5dfc;
@@ -17,7 +17,7 @@
     --dot: #2e2e33;
     --text: #f4f4f5;
     --muted: #a1a1aa;
-    --panel: rgba(28, 28, 31, 0.85);
+    --panel: #1c1c1f;
     --border: rgba(255, 255, 255, 0.08);
     --frame-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5);
   }
@@ -33,13 +33,25 @@ body {
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
 }
 
-/* Infinite canvas: the viewport paints the dots, the world holds the screens. */
+/* Infinite canvas. The dots layer is a little larger than the screen and only ever translated,
+   so panning never repaints it; the world holds the screens. */
 #viewport {
   position: fixed;
   inset: 0;
+  overflow: hidden;
   cursor: grab;
   touch-action: none;
+  outline: none;
+}
+#dots {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% + 200px);
+  height: calc(100% + 200px);
   background-image: radial-gradient(circle, var(--dot) 1.2px, transparent 1.4px);
+  will-change: transform;
+  pointer-events: none;
 }
 #viewport.dragging { cursor: grabbing; }
 #world {
@@ -70,14 +82,39 @@ body {
 
 .screen { margin: 0; }
 .screen figcaption {
-  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: var(--device-w);
+  height: 36px;
+  margin-bottom: 12px;
   font-size: 20px;
   font-weight: 500;
   color: var(--muted);
   white-space: nowrap;
 }
+.screen figcaption .name { overflow: hidden; text-overflow: ellipsis; }
+.states {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+.states button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+  background: var(--panel);
+}
 .frame {
   position: relative;
+  contain: strict;
   width: var(--device-w);
   height: var(--device-h);
   overflow: hidden;
@@ -116,8 +153,6 @@ body {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--panel);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 .brand { font-size: 15px; letter-spacing: -0.01em; }

@@ -11,7 +11,8 @@
     "dashboard"
   ],
   "scripts": {
-    "start": "node bin/flowboard.js"
+    "start": "node bin/flowboard.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"

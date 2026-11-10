@@ -35,8 +35,10 @@ Run it from the folder that contains your Storybook config (.storybook).
 const root = process.cwd();
 const configDir = resolve(root, opts['config-dir']);
 const cache = join(root, 'node_modules', '.cache', 'flowboard');
-const out = join(cache, 'storybook');
-const next = join(cache, 'storybook-next');
+// Per port, so two instances in the same project never overwrite each other's build.
+const out = join(cache, `storybook-${opts.port}`);
+const next = `${out}-next`;
+const old = `${out}-old`;
 const dashboard = fileURLToPath(new URL('../dashboard/', import.meta.url));
 
 function fail(message) {
@@ -59,6 +61,7 @@ const storybookBin = findStorybookBin() ?? fail('Storybook is not installed in t
 // ---------- Build ----------
 const state = { build: null, building: false, error: null, stories: [] };
 let queued = false;
+let buildProcess = null;
 
 async function loadIndex() {
   const { entries } = JSON.parse(await readFile(join(out, 'index.json'), 'utf8'));
@@ -69,11 +72,12 @@ async function loadIndex() {
 function runBuild() {
   return new Promise((done, failed) => {
     const child = spawn(storybookBin, ['build', '-c', configDir, '-o', next, '--quiet', '--disable-telemetry'], { cwd: root });
+    buildProcess = child;
     let log = '';
     child.stdout.on('data', (chunk) => { log += chunk; });
     child.stderr.on('data', (chunk) => { log += chunk; });
     child.on('error', failed);
-    child.on('close', (code) => (code === 0 ? done() : failed(new Error(log.trim().slice(-3000) || `exit code ${code}`))));
+    child.on('close', (code) => (buildProcess = null, code === 0 ? done() : failed(new Error(log.trim().slice(-3000) || `exit code ${code}`))));
   });
 }
 
@@ -85,9 +89,12 @@ async function build() {
   try {
     await rm(next, { recursive: true, force: true });
     await runBuild();
-    // Swap only a finished build in, so the dashboard never sees a half-written bundle.
-    await rm(out, { recursive: true, force: true });
+    // Swap only a finished build in, with two renames so `out` is never missing; the old bundle
+    // is deleted afterwards (requests still streaming from it keep their open files).
+    await rm(old, { recursive: true, force: true });
+    await rename(out, old).catch(() => {});
     await rename(next, out);
+    rm(old, { recursive: true, force: true }).catch(() => {});
     await loadIndex();
     state.error = null;
     console.log(`Built ${state.stories.length} screens in ${((Date.now() - started) / 1000).toFixed(1)}s`);
@@ -100,16 +107,20 @@ async function build() {
 }
 
 // ---------- Watch ----------
-// Only source files trigger a rebuild; generated output (tests, reports, native builds) never does.
-const IGNORED = /(^|[/\\])(node_modules|\.git|ios|android|dist|build|storybook-static|\.expo|\.turbo|coverage|test-results|playwright-report)([/\\]|$)/;
-const SOURCE = /\.(tsx?|jsx?|mjs|cjs|mts|cts|css|scss|json|svg|png|jpe?g|gif|webp|ttf|otf|woff2?)$/;
+// Only source files trigger a rebuild; generated output (tests, reports, native projects) never does.
+// Dependency and tool folders are ignored at any depth, output folders only at the project root,
+// so source folders such as src/platform/android still count.
+const IGNORED_ANYWHERE = /(^|[/\\])(node_modules|\.git|\.expo|\.turbo|\.next)([/\\]|$)/;
+const IGNORED_AT_ROOT = /^(ios|android|dist|build|storybook-static|coverage|test-results|playwright-report)([/\\]|$)/;
+const SOURCE = /\.(tsx?|jsx?|mjs|cjs|mts|cts|css|scss|sass|less|json|mdx?|vue|svelte|astro|html|svg|png|jpe?g|gif|webp|ttf|otf|woff2?)$/;
 if (!opts['no-watch']) {
   let timer;
-  watch(root, { recursive: true }, (_event, file) => {
-    if (!file || IGNORED.test(file) || !SOURCE.test(file)) return;
+  const watcher = watch(root, { recursive: true }, (_event, file) => {
+    if (!file || IGNORED_ANYWHERE.test(file) || IGNORED_AT_ROOT.test(file) || !SOURCE.test(file)) return;
     clearTimeout(timer);
     timer = setTimeout(build, 1500);
   });
+  watcher.on('error', (error) => console.error(`File watching stopped (${error.code ?? error.message}); restart flowboard to rebuild on changes.`));
 }
 
 // ---------- Server ----------
@@ -120,33 +131,95 @@ const MIME = {
   '.ttf': 'font/ttf', '.otf': 'font/otf', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json',
   '.map': 'application/json', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg',
 };
-const DASHBOARD = { '/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css' };
+const DASHBOARD = { '/': 'index.html', '/app.js': 'app.js', '/screens.js': 'screens.js', '/style.css': 'style.css', '/frame.js': 'frame.js' };
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const HOSTS = new Set(['localhost', '127.0.0.1']); // the two loopback names the canvas and its screens use
+const HASHED = /^\/storybook\/assets\//; // content-hashed build output: safe to cache forever
+const FRAME_ANCESTORS = `frame-ancestors http://localhost:${opts.port} http://127.0.0.1:${opts.port}`;
 
-async function sendFile(res, file) {
+// Only loopback names on our port: blocks DNS-rebinding pages that reach us through 127.0.0.1.
+function requestHost(req) {
   try {
-    const info = await stat(file);
-    if (info.isDirectory()) return sendFile(res, join(file, 'index.html'));
-    res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream', 'content-length': info.size, 'cache-control': 'no-cache' });
-    createReadStream(file).pipe(res);
+    const { hostname, port } = new URL(`http://${req.headers.host}`);
+    return HOSTS.has(hostname) && port === String(opts.port) ? hostname : null;
+  } catch {
+    return null;
+  }
+}
+
+// Screens load from the other loopback name (localhost ⇄ 127.0.0.1): a different site, so the
+// browser runs all of them in a process separate from the canvas, and their JavaScript never
+// stalls panning and zooming.
+function frameOrigin(hostname) {
+  return `http://${hostname === '127.0.0.1' ? 'localhost' : '127.0.0.1'}:${opts.port}`;
+}
+
+// Every story iframe gets frame.js, which carries out the canvas commands (scroll, switch state).
+async function sendStoryFrame(res) {
+  try {
+    const html = await readFile(join(out, 'iframe.html'), 'utf8');
+    const body = html.replace('</head>', '<script src="/frame.js"></script></head>');
+    res.writeHead(200, { 'content-type': MIME['.html'], 'cache-control': 'no-cache' }).end(body);
   } catch {
     res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
   }
 }
 
+async function sendFile(req, res, file, path) {
+  let info;
+  try {
+    info = await stat(file);
+    if (info.isDirectory()) return sendFile(req, res, join(file, 'index.html'), path);
+  } catch {
+    return res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
+  }
+  const modified = new Date(Math.floor(info.mtimeMs / 1000) * 1000).toUTCString();
+  const headers = {
+    'cache-control': HASHED.test(path) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'last-modified': modified,
+  };
+  if (req.headers['if-modified-since'] === modified) return res.writeHead(304, headers).end();
+  // The file can vanish between stat and open (a rebuild swapping bundles): fail this request only.
+  const stream = createReadStream(file);
+  stream.on('error', () => (res.headersSent ? res.destroy() : res.writeHead(404).end()));
+  stream.once('open', () => {
+    res.writeHead(200, { ...headers, 'content-type': MIME[extname(file)] ?? 'application/octet-stream', 'content-length': info.size });
+    stream.pipe(res);
+  });
+}
+
 const server = http.createServer((req, res) => {
-  const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  // Local tool: the project's screens are never served to other machines, or to other sites.
+  const hostname = requestHost(req);
+  if (!LOOPBACK.has(req.socket.remoteAddress) || !hostname) return res.writeHead(403).end();
+  res.setHeader('content-security-policy', FRAME_ANCESTORS);
+  let path;
+  try {
+    path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  } catch {
+    return res.writeHead(400).end();
+  }
   if (path === '/api/stories') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    return res.end(JSON.stringify(state));
+    return res.end(JSON.stringify({ ...state, frameOrigin: frameOrigin(hostname) }));
   }
+  if (path === '/storybook/iframe.html') return sendStoryFrame(res);
   if (path.startsWith('/storybook/')) {
     const file = join(out, path.slice('/storybook/'.length));
     if (file !== out && !file.startsWith(out + sep)) return res.writeHead(404).end();
-    return sendFile(res, file);
+    return sendFile(req, res, file, path);
   }
-  if (DASHBOARD[path]) return sendFile(res, join(dashboard, DASHBOARD[path]));
+  if (DASHBOARD[path]) return sendFile(req, res, join(dashboard, DASHBOARD[path]), path);
   res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
 });
+
+// Ctrl+C or a kill also stops a build in progress.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    buildProcess?.kill();
+    process.exit(0);
+  });
+}
 
 server.on('error', (error) => fail(error.code === 'EADDRINUSE' ? `Port ${opts.port} is busy: use --port <other>.` : error.message));
 
