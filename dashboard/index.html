@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flowboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="viewport">
+    <div id="world"></div>
+    <div id="empty" hidden></div>
+  </main>
+
+  <header class="toolbar">
+    <strong class="brand">Flowboard</strong>
+    <span id="status" class="status">Connecting…</span>
+    <span class="spacer"></span>
+    <label class="device">
+      <span>Device</span>
+      <select id="device"></select>
+    </label>
+    <div class="zoom">
+      <button id="zoom-out" title="Zoom out (−)">−</button>
+      <button id="zoom-reset" title="Zoom to 100% (0)">100%</button>
+      <button id="zoom-in" title="Zoom in (+)">+</button>
+      <button id="fit" title="Fit all screens (1)">Fit</button>
+    </div>
+  </header>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,173 @@
+:root {
+  --bg: #f4f4f5;
+  --dot: #c9c9ce;
+  --text: #18181b;
+  --muted: #71717a;
+  --panel: rgba(255, 255, 255, 0.85);
+  --border: rgba(0, 0, 0, 0.08);
+  --frame-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.1);
+  --accent: #6d5dfc;
+  --ok: #16a34a;
+  --error: #dc2626;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111113;
+    --dot: #2e2e33;
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --panel: rgba(28, 28, 31, 0.85);
+    --border: rgba(255, 255, 255, 0.08);
+    --frame-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  -webkit-user-select: none;
+  user-select: none;
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+}
+
+/* Infinite canvas: the viewport paints the dots, the world holds the screens. */
+#viewport {
+  position: fixed;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+  background-image: radial-gradient(circle, var(--dot) 1.2px, transparent 1.4px);
+}
+#viewport.dragging { cursor: grabbing; }
+#world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 200px;
+  will-change: transform;
+}
+
+.category h2 {
+  margin: 0 0 48px;
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.category h2 small {
+  margin-left: 20px;
+  font-size: 32px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.row { display: flex; gap: 72px; align-items: flex-start; }
+
+.screen { margin: 0; }
+.screen figcaption {
+  margin-bottom: 14px;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.frame {
+  position: relative;
+  width: var(--device-w);
+  height: var(--device-h);
+  overflow: hidden;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--frame-shadow);
+}
+.frame::before {
+  content: "Loading…";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #a1a1aa;
+}
+.frame.loaded::before { display: none; }
+/* Read-only: screens never receive pointer or keyboard input. */
+.frame iframe {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+
+.toolbar {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 10px 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+.brand { font-size: 15px; letter-spacing: -0.01em; }
+.status { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  vertical-align: 1px;
+}
+.status.ok::before { background: var(--ok); }
+.status.error::before { background: var(--error); }
+.status.busy::before { background: #f59e0b; }
+.spacer { flex: 1; }
+
+.device { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+select, button {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  height: 32px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+select { padding-right: 6px; }
+button:hover, select:hover { background: var(--border); }
+.zoom { display: flex; gap: 4px; }
+.zoom button { min-width: 32px; }
+#zoom-reset { min-width: 60px; font-variant-numeric: tabular-nums; }
+
+#empty {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+#empty[hidden] { display: none; }
+#empty code { color: var(--text); }
+
+@media (max-width: 640px) {
+  .toolbar { flex-wrap: wrap; }
+  .status { display: none; }
+}
