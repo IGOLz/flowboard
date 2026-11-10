@@ -1,7 +1,6 @@
 // Injected by the Flowboard server into every story iframe. The canvas never touches the screen
-// directly (the iframe runs on another origin, in its own process); it sends commands instead:
-// - scroll: scroll the element under the pointer (at the screen's edges nothing moves);
-// - story: switch to another story (a state of the same screen) without reloading.
+// directly (the iframe runs on another origin, in its own process). This script scrolls on
+// request (at the screen's edges nothing moves) and reports when the story has rendered.
 (() => {
   const SCROLLABLE = /(auto|scroll|overlay)/;
 
@@ -35,10 +34,5 @@
     const message = event.data;
     if (event.source !== parent || !message || typeof message.flowboard !== 'string') return;
     if (message.flowboard === 'scroll') scrollAt(message);
-    if (message.flowboard === 'story' && typeof message.id === 'string') {
-      const channel = window.__STORYBOOK_ADDONS_CHANNEL__;
-      if (channel) channel.emit('setCurrentStory', { storyId: message.id, viewMode: 'story' });
-      else location.replace(`?id=${encodeURIComponent(message.id)}&viewMode=story`);
-    }
   });
 })();

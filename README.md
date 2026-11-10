@@ -10,6 +10,7 @@ Flowboard compiles your stories with `storybook build`, serves the static bundle
 
 - one row per category (the story `title`, e.g. `Onboarding mobile`), with all its screens side by side;
 - stories that are states of the same screen collapse into one screen with ‹ › arrows to switch state;
+- every category and screen has an id from its position, e.g. `1.accesso` and `1.1.welcome` (click it to copy);
 - every screen rendered at the size of the selected device (the Chrome DevTools device list);
 - read-only: screens are real renders of your code; you can scroll inside them, but they never receive clicks or keyboard input;
 - no Storybook dev server: when a source file changes, Flowboard rebuilds and the canvas refreshes by itself.
@@ -44,6 +45,8 @@ Inside one category, stories collapse into a single screen when:
 
 `Create` and `Create Rooms` stay two screens: `Rooms` is not a state word.
 
+Ids follow the story order: they change when stories are added or reordered. Storybook's own story id (e.g. `accesso--welcome`) stays stable.
+
 ## Canvas controls
 
 | Action | Trackpad | Mouse / keyboard |
@@ -59,7 +62,8 @@ A scroll gesture stays with where it started: begun on the canvas it pans, even 
 ## How it works
 
 - Screens are iframes of the static Storybook bundle, served from the other loopback name (`127.0.0.1` when the dashboard is on `localhost`). Being another site, they run in a separate browser process, so their JavaScript never stalls panning and zooming.
-- [dashboard/frame.js](dashboard/frame.js) is injected into every screen. It scrolls on request, switches state through Storybook's `setCurrentStory`, and reports when a story has rendered, so screens boot four at a time.
+- [dashboard/frame.js](dashboard/frame.js) is injected into every screen. It scrolls on request and reports when a story has rendered, so screens boot four at a time.
+- Each state of a screen is its own iframe, stacked in the same frame. A state is shown only once it has rendered, so switching never flashes blank, and switching back is instant.
 - The server only answers `localhost` / `127.0.0.1` requests from this machine.
 
 ## Requirements

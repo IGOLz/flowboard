@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { groupScreens } from '../dashboard/screens.js';
 
 const story = (title, name) => ({ id: `${title}--${name}`.toLowerCase().replace(/\W+/g, '-'), title, name });
-const summary = (stories) => Object.fromEntries([...groupScreens(stories)].map(([title, screens]) =>
+const summary = (stories) => Object.fromEntries(groupScreens(stories).map(({ title, screens }) =>
   [title, screens.map((s) => `${s.name}: ${s.states.map((st) => st.label).join(', ')}`)]));
 
 test('numbered stories with the same number are states of one screen', () => {
@@ -59,4 +59,20 @@ test('a number followed by a word with a dash is not a screen number', () => {
     story('Weather', '3 · Settings'),
     story('Weather', '1-Tap Login'),
   ]), { Weather: ['3-day forecast: Default', '3 · Settings: Default', '1-Tap Login: Default'] });
+});
+
+test('categories and screens get positional ids', () => {
+  const ids = groupScreens([
+    story('Accesso', 'Welcome'),
+    story('Accesso', 'Email'),
+    story('Onboarding mobile', '01 · Welcome'),
+    story('Onboarding mobile', '02 · Home name'),
+    story('Onboarding mobile', '02 · Home name empty'),
+    story('Attività', 'Archived'),
+  ]).map((c) => [c.id, c.screens.map((s) => s.id)]);
+  assert.deepEqual(ids, [
+    ['1.accesso', ['1.1.welcome', '1.2.email']],
+    ['2.onboarding-mobile', ['2.1.welcome', '2.2.home-name']],
+    ['3.attivita', ['3.1.archived']],
+  ]);
 });

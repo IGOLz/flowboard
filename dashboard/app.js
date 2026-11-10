@@ -151,7 +151,7 @@ viewport.addEventListener('wheel', (event) => {
   wheelTimer = setTimeout(() => { wheelTarget = null; }, WHEEL_GESTURE_MS);
 
   if (wheelTarget === 'canvas') return pan(dx, dy);
-  const iframe = wheelTarget.querySelector('iframe');
+  const iframe = wheelTarget.querySelector('iframe.active');
   if (wheelTarget.isConnected && iframe?.contentWindow) forwardScroll(iframe, wheelTarget, event.clientX, event.clientY, dx, dy);
 }, { passive: false });
 
@@ -248,7 +248,7 @@ applyDevice();
 const MAX_LOADING = 4;
 const LOAD_TIMEOUT_MS = 15000;
 const loadQueue = [];
-const loading = new Map(); // iframe → release()
+const loading = new Set();
 
 function pumpLoads() {
   while (loading.size < MAX_LOADING && loadQueue.length) {
@@ -259,20 +259,26 @@ function pumpLoads() {
       clearTimeout(timer);
       if (loading.delete(iframe)) pumpLoads();
     };
-    loading.set(iframe, release);
+    loading.add(iframe);
+    iframe.addEventListener('ready', release, { once: true });
     iframe.src = iframe.dataset.src;
   }
 }
 
+// frame.js says 'ready' each time its story has rendered: mark that iframe and notify listeners.
 addEventListener('message', (event) => {
   if (event.origin !== frameOrigin || event.data?.flowboard !== 'ready') return;
-  for (const [iframe, release] of loading) if (iframe.contentWindow === event.source) release();
+  for (const iframe of world.querySelectorAll('.frame iframe')) {
+    if (iframe.contentWindow !== event.source) continue;
+    iframe.dataset.ready = 'true';
+    iframe.dispatchEvent(new Event('ready'));
+  }
 });
 
 const lazy = new IntersectionObserver((items) => {
   for (const item of items) {
     if (!item.isIntersecting) continue;
-    loadQueue.push(item.target.querySelector('iframe'));
+    loadQueue.push(item.target.querySelector('iframe.active'));
     lazy.unobserve(item.target);
   }
   pumpLoads();
@@ -286,34 +292,68 @@ function el(tag, attrs = {}, ...children) {
 
 const storyUrl = (id) => `${frameOrigin}/storybook/iframe.html?id=${encodeURIComponent(id)}&viewMode=story`;
 
+// The id chip copies the id, e.g. to hand a screen to an agent ("update 2.2.home-name").
+function idChip(id) {
+  const chip = el('button', { className: 'id', title: 'Copy id', textContent: id });
+  chip.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(id);
+      chip.textContent = 'Copied';
+      setTimeout(() => { chip.textContent = id; }, 1000);
+    } catch {}
+  };
+  return chip;
+}
+
+// Every state of a screen gets its own iframe, stacked in the same frame; only the active one is
+// visible. Switching state shows a state that is already rendered, or loads it underneath and
+// swaps once Storybook has rendered it: no blank flash, and later switches are instant.
 function renderScreen(screen) {
   let index = Math.min(selectedState.get(screen.key) ?? 0, screen.states.length - 1);
-  const iframe = el('iframe', { title: screen.name, tabIndex: -1 });
-  iframe.dataset.src = storyUrl(screen.states[index].id);
-  const frame = el('div', { className: 'frame' }, iframe);
-  iframe.onload = () => iframe.src && frame.classList.add('loaded'); // not the initial about:blank
+  const frame = el('div', { className: 'frame' });
+  const iframes = new Map(); // state index → iframe
+  const iframeFor = (i) => {
+    if (iframes.has(i)) return iframes.get(i);
+    const iframe = el('iframe', { title: `${screen.name} – ${screen.states[i].label}`, tabIndex: -1 });
+    iframe.dataset.src = storyUrl(screen.states[i].id);
+    iframe.onload = () => iframe.src && frame.classList.add('loaded'); // not the initial about:blank
+    iframes.set(i, iframe);
+    frame.append(iframe);
+    return iframe;
+  };
+  iframeFor(index).classList.add('active');
   lazy.observe(frame);
 
-  const caption = el('figcaption', {}, el('span', { className: 'name', textContent: screen.name }));
+  const titleRow = el('div', { className: 'title-row' }, el('span', { className: 'name', textContent: screen.name }));
+  const caption = el('figcaption', {}, idChip(screen.id), titleRow);
   if (screen.states.length > 1) {
     const label = el('span', { className: 'state' });
+    const updateLabel = () => { label.textContent = `${screen.states[index].label} · ${index + 1}/${screen.states.length}`; };
     const show = (next) => {
       index = (next + screen.states.length) % screen.states.length;
       selectedState.set(screen.key, index);
-      const { id, label: name } = screen.states[index];
-      label.textContent = `${name} · ${index + 1}/${screen.states.length}`;
-      iframe.dataset.src = storyUrl(id);
-      // Loaded screens switch story in place; a screen still loading restarts on the new URL;
-      // a queued one picks it up when its turn comes.
-      if (frame.classList.contains('loaded')) iframe.contentWindow?.postMessage({ flowboard: 'story', id }, frameOrigin);
-      else if (iframe.src) iframe.src = iframe.dataset.src;
+      updateLabel();
+      const target = iframeFor(index);
+      const activate = () => {
+        if (iframes.get(index) !== target) return; // the user already moved to another state
+        for (const iframe of iframes.values()) iframe.classList.toggle('active', iframe === target);
+      };
+      const current = frame.querySelector('iframe.active');
+      if (!current?.src) { // nothing on screen yet: show the new state and let it take the queue slot
+        activate();
+        loadQueue.push(target);
+        return pumpLoads();
+      }
+      if (target.dataset.ready) return activate();
+      target.addEventListener('ready', activate, { once: true });
+      if (!target.src) target.src = target.dataset.src; // asked for now: skip the queue
     };
-    caption.append(el('span', { className: 'states' },
+    titleRow.append(el('span', { className: 'states' },
       el('button', { className: 'prev', title: 'Previous state', textContent: '‹', onclick: () => show(index - 1) }),
       label,
       el('button', { className: 'next', title: 'Next state', textContent: '›', onclick: () => show(index + 1) }),
     ));
-    show(index);
+    updateLabel();
   }
   return el('figure', { className: 'screen' }, caption, frame);
 }
@@ -322,9 +362,10 @@ function render(stories) {
   lazy.disconnect();
   loadQueue.length = 0;
   loading.clear();
-  world.replaceChildren(...[...groupScreens(stories)].map(([title, screens]) => el('section', { className: 'category' },
-    el('h2', {}, title.split('/').join(' / '), el('small', {}, `${screens.length} ${screens.length === 1 ? 'screen' : 'screens'}`)),
-    el('div', { className: 'row' }, ...screens.map(renderScreen)),
+  world.replaceChildren(...groupScreens(stories).map((category) => el('section', { className: 'category' },
+    el('h2', {}, idChip(category.id), category.title.split('/').join(' / '),
+      el('small', {}, `${category.screens.length} ${category.screens.length === 1 ? 'screen' : 'screens'}`)),
+    el('div', { className: 'row' }, ...category.screens.map(renderScreen)),
   )));
 }
 
